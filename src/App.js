@@ -1319,7 +1319,7 @@ export default function App() {
           {/* 2. صفحة تفاصيل المنتج */}
           <Route 
             path="/product/:id" 
-            element={<ProductDetails productsList={productsList} addToCart={addToCart} />} 
+            element={<ProductDetails productsList={productsList} addToCart={addToCart} setPage={setPage} />} 
           />
 
           {/* 3. المتجر الرئيسي بكافة صفحاته */}
