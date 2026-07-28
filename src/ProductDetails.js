@@ -36,20 +36,17 @@ export default function ProductDetails({ productsList, addToCart, setPage }) {
     }
   }, [product]);
 
-  // دالة أضف للسلة
+  // دالة أضف للسلة (تضيف للملف مع تنبيه بسيط وبدون تحويل)
   const handleAddToCart = () => {
     addToCart(product, selectedSize);
-    if (setPage) setPage("cart");
+    alert("تمت إضافة المنتج إلى السلة بنجاح!");
   };
 
-  // دالة إتمام الطلب مباشرة (تحويل لصفحة الفاتورة/إدخال البيانات)
+  // دالة إتمام الطلب المباشر (تضيف وتحول فوراً للسلة/إتمام الطلب)
   const handleCheckoutNow = () => {
     addToCart(product, selectedSize);
-    if (setPage) {
-      setPage("checkout");
-    } else {
-      navigate('/checkout');
-    }
+    if (setPage) setPage("cart");
+    navigate('/cart'); // ينقل للـ URL الخاص بالسلة مباشرةً
   };
 
   if (productsList.length === 0) {
@@ -90,18 +87,16 @@ export default function ProductDetails({ productsList, addToCart, setPage }) {
         <span className="font-bold text-sm tracking-wide text-zinc-800">دار حرب للعطور الفاخرة</span>
       </div>
 
-      {/* كارت المنتج - توزيع مطابق تماماً للصورة */}
+      {/* كارت المنتج */}
       <div className="w-full max-w-5xl bg-white grid grid-cols-1 md:grid-cols-2 gap-12 items-start mt-4">
         
         {/* العمود الأيمن: التفاصيل والزراير */}
         <div className="flex flex-col text-center md:text-right order-2 md:order-1">
           
-          {/* اسم العطر */}
           <h1 className="text-3xl md:text-4xl font-extrabold text-zinc-900 mb-4 leading-snug">
             {product.name || product.title}
           </h1>
 
-          {/* السعر والخصم */}
           <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
             <span className="text-3xl font-extrabold text-zinc-900">{currentPrice} <span className="text-xl font-bold">ج.م</span></span>
             {product.oldPrice && (
@@ -114,13 +109,12 @@ export default function ProductDetails({ productsList, addToCart, setPage }) {
             )}
           </div>
 
-          {/* الاسم الإنجليزي / الـ Slug */}
           <p className="text-zinc-400 text-sm font-normal mb-8">
             {product.slug || product.englishName || "Dar-Harb-Perfumes"}
           </p>
 
-          {/* الزراير بجانب بعضهم ومطابقة للصورة بدون إيموجيز */}
           <div className="grid grid-cols-2 gap-4 mb-8">
+            {/* زرار إتمام الطلب */}
             <button
               onClick={handleCheckoutNow}
               className="py-3.5 bg-black hover:bg-zinc-800 text-white font-bold text-base rounded-2xl transition active:scale-[0.98]"
@@ -128,6 +122,7 @@ export default function ProductDetails({ productsList, addToCart, setPage }) {
               إتمام الطلب
             </button>
 
+            {/* زرار أضف للسلة */}
             <button
               onClick={handleAddToCart}
               className="py-3.5 bg-white border border-black hover:bg-zinc-50 text-black font-bold text-base rounded-2xl transition active:scale-[0.98]"
@@ -136,7 +131,6 @@ export default function ProductDetails({ productsList, addToCart, setPage }) {
             </button>
           </div>
 
-          {/* وصف العطر والمكونات */}
           <div className="text-zinc-800 text-sm md:text-base leading-relaxed font-normal whitespace-pre-line border-t border-zinc-100 pt-6">
             {dynamicDescription || "مزيج عطري فاخر يناسب جميع المناسبات."}
           </div>
