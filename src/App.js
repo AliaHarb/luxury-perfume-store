@@ -22,17 +22,6 @@ import {
 } from "lucide-react";
 const Facebook = () => <span>FB</span>;
 const Instagram = () => <span>IG</span>;
-
-if (typeof document !== 'undefined' && !window.firebase) {
-  const fbScript = document.createElement('script');
-  fbScript.src = 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js';
-  document.head.appendChild(fbScript);
-
-  const fsScript = document.createElement('script');
-  fsScript.src = 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js';
-  document.head.appendChild(fsScript);
-}
-
 const firebaseConfig = {
   apiKey: "AIzaSyDQWpuIDI70RlO9nPTgqoYHvL0pVuDKbEQ",
   authDomain: "dar-harp-store.firebaseapp.com",
@@ -41,7 +30,38 @@ const firebaseConfig = {
   messagingSenderId: "431422167226",
   appId: "1:431422167226:web:7f0168da97ada397048a83"
 };
+const GOVERNORATES = [
+  // محافظات الصعيد (الشحن: 120 ج.م)
+  { name: "أسوان", isUpperEgypt: true },
+  { name: "الأقصر", isUpperEgypt: true },
+  { name: "قنا", isUpperEgypt: true },
+  { name: "سوهاج", isUpperEgypt: true },
+  { name: "أسيوط", isUpperEgypt: true },
+  { name: "المنيا", isUpperEgypt: true },
+  { name: "بني سويف", isUpperEgypt: true },
+  { name: "الفيوم", isUpperEgypt: true },
+  { name: "الوادي الجديد", isUpperEgypt: true },
+  { name: "البحر الأحمر", isUpperEgypt: true },
 
+  // باقي المحافظات (الشحن: 80 ج.م)
+  { name: "القاهرة", isUpperEgypt: false },
+  { name: "الجيزة", isUpperEgypt: false },
+  { name: "القليوبية", isUpperEgypt: false },
+  { name: "الإسكندرية", isUpperEgypt: false },
+  { name: "الشرقية", isUpperEgypt: false },
+  { name: "الدقهلية", isUpperEgypt: false },
+  { name: "البحيرة", isUpperEgypt: false },
+  { name: "الغربية", isUpperEgypt: false },
+  { name: "المنوفية", isUpperEgypt: false },
+  { name: "دمياط", isUpperEgypt: false },
+  { name: "كفر الشيخ", isUpperEgypt: false },
+  { name: "بورسعيد", isUpperEgypt: false },
+  { name: "الإسماعيلية", isUpperEgypt: false },
+  { name: "السويس", isUpperEgypt: false },
+  { name: "مطروح", isUpperEgypt: false },
+  { name: "شمال سيناء", isUpperEgypt: false },
+  { name: "جنوب سيناء", isUpperEgypt: false }
+];
 
 /* ------------------------------------------------------------------ */
 /*  TOKENS — clean, high-end off-white / pure-white luxury palette     */
@@ -916,11 +936,25 @@ function CartPage({ cart, updateQty, removeItem, subtotal, setPage }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  CHECKOUT PAGE                                                      */
+/*  CHECKOUT PAGE                                                     */
 /* ------------------------------------------------------------------ */
 function CheckoutPage({ cart, subtotal, onConfirm, setPage }) {
-  const [form, setForm] = useState({ name: "", mobile1: "", mobile2: "", governorate: "", address: "" });
+  const [form, setForm] = useState({ 
+    name: "", 
+    mobile1: "", 
+    mobile2: "", 
+    governorate: "القاهرة", // القيمة الافتراضية
+    address: "" 
+  });
   const [errors, setErrors] = useState({});
+
+  // حساب سعر الشحن والإجمالي الكلي بناءً على المحافظة المختارة
+  const shippingFee = useMemo(() => {
+    const selectedGov = GOVERNORATES.find((g) => g.name === form.governorate);
+    return selectedGov?.isUpperEgypt ? 120 : 80;
+  }, [form.governorate]);
+
+  const totalPrice = useMemo(() => subtotal + shippingFee, [subtotal, shippingFee]);
 
   if (cart.length === 0) {
     return (
@@ -940,10 +974,19 @@ function CheckoutPage({ cart, subtotal, onConfirm, setPage }) {
     const errs = {};
     if (!form.name.trim()) errs.name = "الرجاء إدخال اسم العميل";
     if (!/^01[0-9]{9}$/.test(form.mobile1.trim())) errs.mobile1 = "رقم موبايل غير صحيح (مثال: 01xxxxxxxxx)";
-    if (!form.governorate.trim()) errs.governorate = "الرجاء إدخال المحافظة";
+    if (!form.governorate.trim()) errs.governorate = "الرجاء اختيار المحافظة";
     if (!form.address.trim()) errs.address = "الرجاء إدخال العنوان بالتفصيل";
+    
     setErrors(errs);
-    if (Object.keys(errs).length === 0) onConfirm(form);
+    
+    // إرسال البيانات شاملة تفاصيل الشحن والإجمالي النهائي
+    if (Object.keys(errs).length === 0) {
+      onConfirm({
+        ...form,
+        shippingFee,
+        totalPrice
+      });
+    }
   };
 
   return (
@@ -990,14 +1033,20 @@ function CheckoutPage({ cart, subtotal, onConfirm, setPage }) {
             </Field>
           </div>
 
+          {/* قائمة اختيار المحافظة (Dropdown) */}
           <Field label="المحافظة" error={errors.governorate}>
-            <input
+            <select
               value={form.governorate}
               onChange={handleChange("governorate")}
-              placeholder="مثال: القاهرة، الجيزة، الغربية..."
-              className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
+              className="w-full rounded-xl border px-4 py-3 text-sm outline-none bg-white cursor-pointer"
               style={{ borderColor: errors.governorate ? "#e07a6b" : C.line }}
-            />
+            >
+              {GOVERNORATES.map((gov) => (
+                <option key={gov.name} value={gov.name}>
+                  {gov.name} ({gov.isUpperEgypt ? "شحن 120 ج.م" : "شحن 80 ج.م"})
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field label="العنوان بالتفصيل" error={errors.address}>
@@ -1035,6 +1084,7 @@ function CheckoutPage({ cart, subtotal, onConfirm, setPage }) {
           </GoldButton>
         </form>
 
+        {/* ملخص الطلب والتكاليف */}
         <div className="h-fit rounded-2xl border p-6" style={{ borderColor: C.line, background: C.white }}>
           <h3 className="mb-5 text-lg font-black" style={{ color: C.espresso900, fontFamily: "'Reem Kufi'" }}>
             ملخص الطلب
@@ -1059,10 +1109,25 @@ function CheckoutPage({ cart, subtotal, onConfirm, setPage }) {
               );
             })}
           </div>
+          
           <div className="my-4 h-px" style={{ background: C.line }} />
+          
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between" style={{ color: C.espresso700 }}>
+              <span>إجمالي المنتجات</span>
+              <span className="font-bold">{formatPrice(subtotal)}</span>
+            </div>
+            <div className="flex justify-between" style={{ color: C.espresso700 }}>
+              <span>تكلفة الشحن ({form.governorate})</span>
+              <span className="font-bold">{formatPrice(shippingFee)}</span>
+            </div>
+          </div>
+
+          <div className="my-4 h-px" style={{ background: C.line }} />
+
           <div className="flex justify-between text-lg font-black" style={{ color: C.espresso900 }}>
-            <span>الإجمالي</span>
-            <span>{formatPrice(subtotal)}</span>
+            <span>الإجمالي النهائي</span>
+            <span>{formatPrice(totalPrice)}</span>
           </div>
         </div>
       </div>
@@ -1083,7 +1148,7 @@ function Field({ label, error, children }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  CONFIRMATION PAGE                                                   */
+/*  CONFIRMATION PAGE                                                 */
 /* ------------------------------------------------------------------ */
 function ConfirmationPage({ order, setPage }) {
   if (!order) {
@@ -1096,6 +1161,9 @@ function ConfirmationPage({ order, setPage }) {
       </div>
     );
   }
+
+  const shippingFee = order.form.shippingFee || 0;
+  const finalTotal = order.form.totalPrice || order.subtotal;
 
   return (
     <div className="mx-auto max-w-2xl px-5 py-20 text-center">
@@ -1137,7 +1205,7 @@ function ConfirmationPage({ order, setPage }) {
             </span>
           </div>
           <div className="flex justify-between">
-            <span style={{ color: C.espresso500 }}>المحافظة</span>
+            <span style={{ color: C.espresso500 }}>المافظة</span>
             <span className="font-bold">{order.form.governorate}</span>
           </div>
           <div className="flex items-start justify-between gap-3">
@@ -1166,9 +1234,21 @@ function ConfirmationPage({ order, setPage }) {
           })}
         </div>
 
-        <div className="flex justify-between text-lg font-black" style={{ color: C.espresso900 }}>
-          <span>الإجمالي</span>
-          <span>{formatPrice(order.subtotal)}</span>
+        {/* تفاصيل الحساب النهائي */}
+        <div className="space-y-1.5 border-b pb-4 text-sm" style={{ borderColor: C.line, color: C.espresso700 }}>
+          <div className="flex justify-between">
+            <span style={{ color: C.espresso500 }}>المجموع الفرعي</span>
+            <span className="font-bold">{formatPrice(order.subtotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span style={{ color: C.espresso500 }}>مصاريف الشحن</span>
+            <span className="font-bold">{formatPrice(shippingFee)}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-between text-lg font-black" style={{ color: C.espresso900 }}>
+          <span>الإجمالي الكلي</span>
+          <span>{formatPrice(finalTotal)}</span>
         </div>
       </div>
 
@@ -1181,7 +1261,7 @@ function ConfirmationPage({ order, setPage }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  APP ROOT                                                           */
+/*  APP ROOT                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function App() {
@@ -1246,21 +1326,28 @@ export default function App() {
   const subtotal = useMemo(() => cart.reduce((s, i) => s + (Number(i?.price) || 0) * (Number(i?.qty) || 0), 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + (Number(i?.qty) || 0), 0), [cart]);
 
-  // 2. تأكيد وتخزين الطلب
+  // 2. تأكيد وتخزين الطلب حساب الشحن والتكلفة الكلية
   const handleConfirmOrder = async (form) => {
     const orderNumber = `DH-${Date.now().toString().slice(-6)}`;
+    
+    // استخراج مصاريف الشحن والإجمالي الكلي المعالجة في CheckoutPage
+    const shippingFee = form.shippingFee || 80;
+    const totalPrice = form.totalPrice || (subtotal + shippingFee);
+
     const orderData = {
       orderNumber,
       form,
       items: cart,
       subtotal,
+      shippingFee,
+      totalPrice,
       date: new Date().toLocaleDateString("ar-EG"),
     };
 
     try {
       const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
 
-      // إرسال لـ Google Sheets
+      // إرسال لـ Google Sheets مع تفاصيل الشحن والإجمالي
       fetch("https://script.google.com/macros/s/AKfycbws-3KMuxub-LF8-v3dYRaotE5xAFj_WWqUJkrRDi6n5TiMRLakZw65gRdCJkPgebUS/exec", {
         method: "POST",
         mode: "no-cors", 
@@ -1273,7 +1360,9 @@ export default function App() {
           governorate: form.governorate.trim(),
           address: form.address.trim(),
           items: itemsSummary,
-          totalPrice: subtotal
+          subtotal: subtotal,
+          shippingFee: shippingFee,
+          totalPrice: totalPrice
         })
       }).catch(err => console.error("Sheets Error:", err));
 
@@ -1293,7 +1382,9 @@ export default function App() {
         governorate: form.governorate.trim(),
         address: form.address.trim(),
         items: dbItems,
-        totalPrice: subtotal,
+        subtotal: subtotal,
+        shippingFee: shippingFee,
+        totalPrice: totalPrice,
         status: "pending",
         createdAt: new Date().toISOString()
       });
