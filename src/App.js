@@ -1252,12 +1252,11 @@ function ConfirmationPage({ order, setPage }) {
   );
 }
 
-
 /* ------------------------------------------------------------------ */
 /*  APP ROOT                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function App() {
+  export default function App() {
   const [page, setPage] = useState("home");
   const [cart, setCart] = useState([]);
   const [lastOrder, setLastOrder] = useState(null);
@@ -1336,8 +1335,8 @@ export default function App() {
   const subtotal = useMemo(() => cart.reduce((s, i) => s + (Number(i?.price) || 0) * (Number(i?.qty) || 0), 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + (Number(i?.qty) || 0), 0), [cart]);
 
-  // 3. تأكيد الطلب وإرساله للـ Apps Script (يسجل في الشيت + يرسل لـ Easy Orders) + Firestore + Meta Pixel
-  const handleConfirmOrder = async (form) => {
+  // 3. تأكيد الطلب بسرعة فائقة ونقله لصفحة التأكيد فوراً بدون أي تأخير
+  const handleConfirmOrder = (form) => {
     const orderNumber = `DH-${Date.now().toString().slice(-6)}`;
     const shippingFee = Number(form.shippingFee) || 80;
     const totalPrice = Number(form.totalPrice) || (subtotal + shippingFee);
@@ -1352,6 +1351,7 @@ export default function App() {
       date: new Date().toLocaleDateString("ar-EG"),
     };
 
+    // إرسال حدث الشراء لـ Meta Pixel
     if (window.fbq) {
       window.fbq('track', 'Purchase', {
         value: totalPrice,
@@ -1362,10 +1362,11 @@ export default function App() {
       });
     }
 
-    try {
-      const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
+    const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
 
-      const easyOrdersPayload = {
+    const payloadToSend = {
+      apiKey: typeof EASY_ORDERS_API_KEY !== "undefined" ? EASY_ORDERS_API_KEY : "",
+      easyOrdersPayload: {
         full_name: form.name.trim(),
         phone: form.mobile1.trim(),
         government: form.governorate.trim(),
@@ -1379,49 +1380,44 @@ export default function App() {
           price: Number(item.price),
           quantity: Number(item.qty)
         }))
-      };
+      },
+      orderNumber,
+      customerName: form.name.trim(),
+      mobile1: form.mobile1.trim(),
+      mobile2: form.mobile2 ? form.mobile2.trim() : "",
+      governorate: form.governorate.trim(),
+      address: form.address.trim(),
+      items: itemsSummary,
+      subtotal: subtotal,
+      shippingFee: shippingFee,
+      totalPrice: totalPrice
+    };
 
-      // إرسال البيانات للـ Apps Script ليسجل في الشيت ويرسل لـ Easy Orders من السيرفر بدون مشاكل CORS
-      fetch("https://script.google.com/macros/s/AKfycbws-3KMuxub-LF8-v3dYRaotE5xAFj_WWqUJkrRDi6n5TiMRLakZw65gRdCJkPgebUS/exec", {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: EASY_ORDERS_API_KEY,
-          easyOrdersPayload: easyOrdersPayload,
-          orderNumber,
-          customerName: form.name.trim(),
-          mobile1: form.mobile1.trim(),
-          mobile2: form.mobile2 ? form.mobile2.trim() : "",
-          governorate: form.governorate.trim(),
-          address: form.address.trim(),
-          items: itemsSummary,
-          subtotal: subtotal,
-          shippingFee: shippingFee,
-          totalPrice: totalPrice
-        })
-      }).catch(err => console.error("Sheet & Easy Orders Error:", err));
+    // إرسال البيانات للرابط الجديد في الخلفية
+    fetch("https://script.google.com/macros/s/AKfycbxy2lnMjXZlmgh3cOGvK2agJP3BPdEZTG0zq2hrLlPtYz-0579reNU_lS6XTom12rb7/exec", {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadToSend)
+    }).catch(err => console.error("Webhook Sync Error:", err));
 
-      // حفظ نسخة احتياطية في Firestore
-      await addDoc(collection(db, "orders"), {
-        orderNumber,
-        customerName: form.name.trim(),
-        mobile1: form.mobile1.trim(),
-        mobile2: form.mobile2 ? form.mobile2.trim() : "",
-        governorate: form.governorate.trim(),
-        address: form.address.trim(),
-        items: cart.map(item => ({ name: item.name, size: item.sizeLabel, qty: item.qty, price: item.price })),
-        subtotal,
-        shippingFee,
-        totalPrice,
-        status: "pending",
-        createdAt: new Date().toISOString()
-      });
+    // حفظ في Firestore بالخلفية
+    addDoc(collection(db, "orders"), {
+      orderNumber,
+      customerName: form.name.trim(),
+      mobile1: form.mobile1.trim(),
+      mobile2: form.mobile2 ? form.mobile2.trim() : "",
+      governorate: form.governorate.trim(),
+      address: form.address.trim(),
+      items: cart.map(item => ({ name: item.name, size: item.sizeLabel, qty: item.qty, price: item.price })),
+      subtotal,
+      shippingFee,
+      totalPrice,
+      status: "pending",
+      createdAt: new Date().toISOString()
+    }).catch(err => console.error("Firestore Save Error:", err));
 
-    } catch (error) {
-      console.error("Order processing error:", error);
-    }
-
+    // الانتقال المباشر بدون انتظار
     setLastOrder(orderData);
     setCart([]);
     setPage("confirmation");
