@@ -1274,14 +1274,13 @@ export default function App() {
   useEffect(() => {
     const fetchEasyOrdersProducts = async () => {
       try {
-        const response = await fetch("https://public-api.easy-orders.net/api/v1/products", {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`,
-            "api-key": EASY_ORDERS_API_KEY,
-            "Accept": "application/json"
-          }
-        });
+       const response = await fetch("https://corsproxy.io/?" + encodeURIComponent("https://public-api.easy-orders.net/api/v1/products"), {
+  method: "GET",
+  headers: {
+    "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`,
+    "Accept": "application/json"
+  }
+});
         const data = await response.json();
         console.log("Easy Orders Products Response:", data);
 
@@ -1413,19 +1412,18 @@ export default function App() {
         }))
       };
 
-      fetch("https://public-api.easy-orders.net/api/v1/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`,
-          "api-key": EASY_ORDERS_API_KEY
-        },
-        body: JSON.stringify(easyOrdersPayload)
-      })
-      .then(res => res.json())
-      .then(resData => console.log("Easy Orders Order Response:", resData))
-      .catch(err => console.error("Easy Orders Sync Error:", err));
+     fetch("https://corsproxy.io/?" + encodeURIComponent("https://public-api.easy-orders.net/api/v1/orders"), {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`
+  },
+  body: JSON.stringify(easyOrdersPayload)
+})
+.then(res => res.json())
+.then(resData => console.log("Easy Orders Success Response:", resData))
+.catch(err => console.error("Easy Orders Sync Error:", err));
 
       // حفظ نسخة احتياطية في Google Sheets
       const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
