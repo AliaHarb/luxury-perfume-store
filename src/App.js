@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import AdminProducts from './AdminProducts';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import ProductDetails from './ProductDetails';
-import { useNavigate } from 'react-router-dom';
 import { db } from "./firebase";
 import { collection, onSnapshot, addDoc } from "firebase/firestore";
 import {
@@ -20,17 +19,16 @@ import {
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  CONFIG & CONSTANTS                                                */
+/* ------------------------------------------------------------------ */
+const EASY_ORDERS_API_KEY = "f0bbf85e-5f26-47ad-90d3-122a2862c60f";
+
 const Facebook = () => <span>FB</span>;
 const Instagram = () => <span>IG</span>;
-const firebaseConfig = {
-  apiKey: "AIzaSyDQWpuIDI70RlO9nPTgqoYHvL0pVuDKbEQ",
-  authDomain: "dar-harp-store.firebaseapp.com",
-  projectId: "dar-harp-store",
-  storageBucket: "dar-harp-store.firebasestorage.app",
-  messagingSenderId: "431422167226",
-  appId: "1:431422167226:web:7f0168da97ada397048a83"
-};
-const GOVERNORATES = [
+
+export const GOVERNORATES = [
   // محافظات الصعيد (الشحن: 120 ج.م)
   { name: "أسوان", isUpperEgypt: true },
   { name: "الأقصر", isUpperEgypt: true },
@@ -63,10 +61,7 @@ const GOVERNORATES = [
   { name: "جنوب سيناء", isUpperEgypt: false }
 ];
 
-/* ------------------------------------------------------------------ */
-/*  TOKENS — clean, high-end off-white / pure-white luxury palette     */
-/* ------------------------------------------------------------------ */
-const C = {
+export const C = {
   white: "#FFFFFF",
   offwhite: "#FAFAFA",
   paper: "#F2F2F2",
@@ -81,12 +76,12 @@ const C = {
   gold700: "#7C5E33",
 };
 
-const LOGO_URL = "/Logo.jpg";
-const FONT_IMPORT = `
+export const LOGO_URL = "/Logo.jpg";
+export const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400..700&family=Tajawal:wght@300;400;500;700;900&family=Cairo:wght@600;700;800;900&display=swap');
 `;
 
-const TONE_COLORS = {
+export const TONE_COLORS = {
   gold: { liquid: "#C6A16B", cap: "#7C5E33" },
   silver: { liquid: "#D7CFC0", cap: "#8A7A5F" },
   dark: { liquid: "#5B4632", cap: "#2A2018" },
@@ -95,31 +90,259 @@ const TONE_COLORS = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  DEFENSIVE HELPERS                                                  */
+/*  DEFENSIVE HELPERS                                                 */
 /* ------------------------------------------------------------------ */
-function formatPrice(n) {
+export function formatPrice(n) {
   const value = Number(n);
   const safeValue = Number.isFinite(value) ? value : 0;
   return `${safeValue.toLocaleString("ar-EG")} ج.م`;
 }
 
-// Normalizes any brand string coming from Firestore (trims whitespace,
-// lowercases for comparison) so filtering never silently fails because of
-// casing or stray spaces entered in the admin panel.
-function normalizeBrandKey(value) {
+export function normalizeBrandKey(value) {
   return (value || "").toString().trim().toLowerCase();
 }
 
-function getProductBrandLabel(product) {
+export function getProductBrandLabel(product) {
   const raw = (product && (product.brandLabel || product.brand)) || "";
   return raw.toString().trim();
 }
 
-function getSafeSizes(product) {
+export function getSafeSizes(product) {
   if (product && Array.isArray(product.sizes) && product.sizes.length > 0) {
     return product.sizes.filter((s) => s && (s.label || s.price !== undefined));
   }
   return [{ label: "الحجم القياسي", price: 0 }];
+}
+
+/* ------------------------------------------------------------------ */
+/*  APP ROOT                                                          */
+/* ------------------------------------------------------------------ */
+export default function App() {
+  const [page, setPage] = useState("home");
+  const [cart, setCart] = useState([]);
+  const [lastOrder, setLastOrder] = useState(null);
+  const [productsList, setProductsList] = useState([]);
+
+  // 1. Meta Pixel PageView Tracking
+  useEffect(() => {
+    if (window.fbq) {
+      window.fbq('track', 'PageView');
+    }
+  }, [page]);
+
+  // 2. Fetch Products from Easy Orders API
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch("https://public-api.easy-orders.net/api/v1/products", {
+          headers: {
+            "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`,
+            "Accept": "application/json"
+          }
+        });
+        const data = await response.json();
+        
+        if (data && (data.data || data.products || Array.isArray(data))) {
+          const rawList = data.data || data.products || data;
+          const mapped = rawList.map((item) => ({
+            id: item.id?.toString() || Math.random().toString(),
+            name: item.name || item.title || "عطر فاخر",
+            brandLabel: item.category?.name || item.brand || "دار حرب",
+            tone: item.description || "عطر مميز وثابت",
+            imageUrl: item.image || item.images?.[0]?.url || item.imageUrl || "/Logo.jpg",
+            isAvailable: item.status !== "inactive" && item.quantity !== 0,
+            sizes: item.variants?.length > 0 ? item.variants.map(v => ({
+              label: v.name || v.title || "الحجم القياسي",
+              price: Number(v.price) || 0
+            })) : [{ label: "100 مل", price: Number(item.price) || 0 }]
+          }));
+          setProductsList(mapped);
+        }
+      } catch (err) {
+        console.error("Error fetching from Easy Orders:", err);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  const addToCart = (product, size) => {
+    if (!product || product.isAvailable === false) return;
+    const safeSize = size && size.label ? size : { label: "الحجم القياسي", price: product.price || 0 };
+    const id = `${product.id}-${safeSize.label}`;
+    const productPrice = Number(safeSize.price) || Number(product.price) || 0;
+    
+    if (window.fbq) {
+      window.fbq('track', 'AddToCart', {
+        content_name: product.name || product.title || "منتج",
+        content_ids: [product.id],
+        value: productPrice,
+        currency: 'EGP'
+      });
+    }
+
+    setCart((prev) => {
+      const existing = prev.find((i) => i.id === id);
+      if (existing) {
+        return prev.map((i) => (i.id === id ? { ...i, qty: i.qty + 1 } : i));
+      }
+      return [
+        ...prev,
+        {
+          id,
+          productId: product.id,
+          name: product.name || "منتج",
+          brandLabel: product.brandLabel || "",
+          tone: product.tone,
+          sizeLabel: safeSize.label,
+          price: productPrice,
+          qty: 1,
+        },
+      ];
+    });
+  };
+
+  const updateQty = (id, qty) => {
+    if (qty <= 0) {
+      setCart((prev) => prev.filter((i) => i.id !== id));
+      return;
+    }
+    setCart((prev) => prev.map((i) => (i.id === id ? { ...i, qty } : i)));
+  };
+
+  const removeItem = (id) => setCart((prev) => prev.filter((i) => i.id !== id));
+
+  const subtotal = useMemo(() => cart.reduce((s, i) => s + (Number(i?.price) || 0) * (Number(i?.qty) || 0), 0), [cart]);
+  const cartCount = useMemo(() => cart.reduce((s, i) => s + (Number(i?.qty) || 0), 0), [cart]);
+
+  // 3. تأكيد الطلب وإرساله إلى Easy Orders + Firestore + Sheets + Meta Pixel
+  const handleConfirmOrder = async (form) => {
+    const orderNumber = `DH-${Date.now().toString().slice(-6)}`;
+    const shippingFee = form.shippingFee || 80;
+    const totalPrice = form.totalPrice || (subtotal + shippingFee);
+
+    const orderData = {
+      orderNumber,
+      form,
+      items: cart,
+      subtotal,
+      shippingFee,
+      totalPrice,
+      date: new Date().toLocaleDateString("ar-EG"),
+    };
+
+    if (window.fbq) {
+      window.fbq('track', 'Purchase', {
+        value: totalPrice,
+        currency: 'EGP',
+        content_ids: cart.map(i => i.productId || i.id),
+        content_type: 'product',
+        num_items: cart.reduce((s, i) => s + (i.qty || 1), 0)
+      });
+    }
+
+    try {
+      // إرسال الطلب لـ Easy Orders
+      fetch("https://public-api.easy-orders.net/api/v1/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`
+        },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          phone: form.mobile1.trim(),
+          secondary_phone: form.mobile2 ? form.mobile2.trim() : "",
+          city: form.governorate.trim(),
+          address: form.address.trim(),
+          notes: `كود الطلب: ${orderNumber}`,
+          shipping_cost: shippingFee,
+          total: totalPrice,
+          items: cart.map(item => ({
+            name: `${item.name} (${item.sizeLabel})`,
+            quantity: item.qty,
+            price: item.price
+          }))
+        })
+      }).catch(err => console.error("Easy Orders Sync Error:", err));
+
+      // حفظ نسخة في Google Sheets
+      const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
+      fetch("https://script.google.com/macros/s/AKfycbws-3KMuxub-LF8-v3dYRaotE5xAFj_WWqUJkrRDi6n5TiMRLakZw65gRdCJkPgebUS/exec", {
+        method: "POST",
+        mode: "no-cors", 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNumber,
+          customerName: form.name.trim(),
+          mobile1: form.mobile1.trim(),
+          mobile2: form.mobile2.trim(),
+          governorate: form.governorate.trim(),
+          address: form.address.trim(),
+          items: itemsSummary,
+          subtotal: subtotal,
+          shippingFee: shippingFee,
+          totalPrice: totalPrice
+        })
+      }).catch(err => console.error("Sheets Error:", err));
+
+      // حفظ نسخة في Firestore
+      await addDoc(collection(db, "orders"), {
+        orderNumber,
+        customerName: form.name.trim(),
+        mobile1: form.mobile1.trim(),
+        mobile2: form.mobile2.trim(),
+        governorate: form.governorate.trim(),
+        address: form.address.trim(),
+        items: cart.map(item => ({ name: item.name, size: item.sizeLabel, qty: item.qty, price: item.price })),
+        subtotal,
+        shippingFee,
+        totalPrice,
+        status: "pending",
+        createdAt: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error("Order processing error:", error);
+    }
+
+    setLastOrder(orderData);
+    setCart([]);
+    setPage("confirmation");
+  };
+
+  return (
+    <Router>
+      <div dir="rtl" className="min-h-screen" style={{ background: C.white, fontFamily: "'Tajawal', sans-serif" }}>
+        <style>{FONT_IMPORT}</style>
+        <Routes>
+          <Route path="/admin" element={<AdminProducts />} />
+          <Route 
+            path="/product/:id" 
+            element={<ProductDetails productsList={productsList} addToCart={addToCart} setPage={setPage} />} 
+          />
+          <Route
+            path="/*"
+            element={
+              <>
+                <Nav page={page} setPage={setPage} cartCount={cartCount} />
+                {page === "home" && <HomePage addToCart={addToCart} setPage={setPage} productsList={productsList} />}
+                {page === "cart" && (
+                  <CartPage cart={cart} updateQty={updateQty} removeItem={removeItem} subtotal={subtotal} setPage={setPage} />
+                )}
+                {page === "checkout" && (
+                  <CheckoutPage cart={cart} subtotal={subtotal} onConfirm={handleConfirmOrder} setPage={setPage} />
+                )}
+                {page === "confirmation" && <ConfirmationPage order={lastOrder} setPage={setPage} />}
+                <Footer setPage={setPage} />
+              </>
+            }
+          />
+        </Routes>
+      </div>
+    </Router>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -1260,6 +1483,7 @@ function ConfirmationPage({ order, setPage }) {
   );
 }
 
+
 /* ------------------------------------------------------------------ */
 /*  APP ROOT                                                          */
 /* ------------------------------------------------------------------ */
@@ -1270,28 +1494,77 @@ export default function App() {
   const [lastOrder, setLastOrder] = useState(null);
   const [productsList, setProductsList] = useState([]);
 
-  // 1. جلب المنتجات فوراً وبشكل لحظي عبر الـ Modular SDK
+  // 1. تتبع التنقل بين الصفحات في Meta Pixel
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "products"),
-      (snapshot) => {
-        const list = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setProductsList(list);
-      },
-      (error) => console.error("Error fetching products: ", error)
-    );
+    if (window.fbq) {
+      window.fbq('track', 'PageView');
+    }
+  }, [page]);
 
-    return () => unsubscribe();
+  // 2. جلب المنتجات تلقائياً من Easy Orders مع Fallback لـ Firestore
+  useEffect(() => {
+    const fetchEasyOrdersProducts = async () => {
+      try {
+        const response = await fetch("https://public-api.easy-orders.net/api/v1/products", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`,
+            "api-key": EASY_ORDERS_API_KEY,
+            "Accept": "application/json"
+          }
+        });
+        const data = await response.json();
+        console.log("Easy Orders Products Response:", data);
+
+        const rawList = data?.data || data?.products || (Array.isArray(data) ? data : []);
+        if (rawList.length > 0) {
+          const mapped = rawList.map((item) => ({
+            id: item.id?.toString() || Math.random().toString(),
+            name: item.name || item.title || "منتج فاخر",
+            brandLabel: item.category?.name || item.brand || "دار حرب",
+            tone: item.description || "عطر مميز وثابت",
+            imageUrl: item.image || item.images?.[0]?.url || item.imageUrl || "/Logo.jpg",
+            isAvailable: item.status !== "inactive" && item.quantity !== 0,
+            sizes: item.variants && item.variants.length > 0 ? item.variants.map(v => ({
+              label: v.name || v.title || "الحجم القياسي",
+              price: Number(v.price) || 0
+            })) : [{ label: "100 مل", price: Number(item.price) || 0 }]
+          }));
+          setProductsList(mapped);
+        } else {
+          // جلب بديل من Firestore
+          const unsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
+            setProductsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          });
+          return () => unsubscribe();
+        }
+      } catch (err) {
+        console.error("Error fetching from Easy Orders:", err);
+        const unsubscribe = onSnapshot(collection(db, "products"), (snapshot) => {
+          setProductsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return () => unsubscribe();
+      }
+    };
+
+    fetchEasyOrdersProducts();
   }, []);
 
   const addToCart = (product, size) => {
     if (!product || product.isAvailable === false) return;
     const safeSize = size && size.label ? size : { label: "الحجم القياسي", price: product.price || 0 };
     const id = `${product.id}-${safeSize.label}`;
+    const productPrice = Number(safeSize.price) || Number(product.price) || 0;
     
+    if (window.fbq) {
+      window.fbq('track', 'AddToCart', {
+        content_name: product.name || product.title || "منتج",
+        content_ids: [product.id],
+        value: productPrice,
+        currency: 'EGP'
+      });
+    }
+
     setCart((prev) => {
       const existing = prev.find((i) => i.id === id);
       if (existing) {
@@ -1306,7 +1579,7 @@ export default function App() {
           brandLabel: product.brandLabel || product.brand || "",
           tone: product.tone,
           sizeLabel: safeSize.label,
-          price: Number(safeSize.price) || Number(product.price) || 0,
+          price: productPrice,
           qty: 1,
         },
       ];
@@ -1326,13 +1599,11 @@ export default function App() {
   const subtotal = useMemo(() => cart.reduce((s, i) => s + (Number(i?.price) || 0) * (Number(i?.qty) || 0), 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + (Number(i?.qty) || 0), 0), [cart]);
 
-  // 2. تأكيد وتخزين الطلب حساب الشحن والتكلفة الكلية
+  // 3. تأكيد الطلب وإرساله إلى Easy Orders + Firestore + Google Sheets + Meta Pixel
   const handleConfirmOrder = async (form) => {
     const orderNumber = `DH-${Date.now().toString().slice(-6)}`;
-    
-    // استخراج مصاريف الشحن والإجمالي الكلي المعالجة في CheckoutPage
-    const shippingFee = form.shippingFee || 80;
-    const totalPrice = form.totalPrice || (subtotal + shippingFee);
+    const shippingFee = Number(form.shippingFee) || 80;
+    const totalPrice = Number(form.totalPrice) || (subtotal + shippingFee);
 
     const orderData = {
       orderNumber,
@@ -1344,10 +1615,51 @@ export default function App() {
       date: new Date().toLocaleDateString("ar-EG"),
     };
 
-    try {
-      const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
+    if (window.fbq) {
+      window.fbq('track', 'Purchase', {
+        value: totalPrice,
+        currency: 'EGP',
+        content_ids: cart.map(i => i.productId || i.id),
+        content_type: 'product',
+        num_items: cart.reduce((s, i) => s + (i.qty || 1), 0)
+      });
+    }
 
-      // إرسال لـ Google Sheets مع تفاصيل الشحن والإجمالي
+    try {
+      // إرسال الطلب لـ Easy Orders بالهيكل المعتمد
+      const easyOrdersPayload = {
+        full_name: form.name.trim(),
+        phone: form.mobile1.trim(),
+        government: form.governorate.trim(),
+        address: form.mobile2 ? `${form.address.trim()} (هاتف بديل: ${form.mobile2.trim()})` : form.address.trim(),
+        payment_method: "cod",
+        cost: Number(subtotal),
+        shipping_cost: Number(shippingFee),
+        total_cost: Number(totalPrice),
+        cart_items: cart.map((item) => ({
+          name: `${item.name} (${item.sizeLabel})`,
+          price: Number(item.price),
+          quantity: Number(item.qty),
+          ...(item.productId && item.productId.length > 8 ? { product_id: item.productId } : {})
+        }))
+      };
+
+      fetch("https://public-api.easy-orders.net/api/v1/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": `Bearer ${EASY_ORDERS_API_KEY}`,
+          "api-key": EASY_ORDERS_API_KEY
+        },
+        body: JSON.stringify(easyOrdersPayload)
+      })
+      .then(res => res.json())
+      .then(resData => console.log("Easy Orders Order Response:", resData))
+      .catch(err => console.error("Easy Orders Sync Error:", err));
+
+      // حفظ نسخة احتياطية في Google Sheets
+      const itemsSummary = cart.map(item => `${item.name} (${item.sizeLabel}) × ${item.qty}`).join(' - ');
       fetch("https://script.google.com/macros/s/AKfycbws-3KMuxub-LF8-v3dYRaotE5xAFj_WWqUJkrRDi6n5TiMRLakZw65gRdCJkPgebUS/exec", {
         method: "POST",
         mode: "no-cors", 
@@ -1356,7 +1668,7 @@ export default function App() {
           orderNumber,
           customerName: form.name.trim(),
           mobile1: form.mobile1.trim(),
-          mobile2: form.mobile2.trim(),
+          mobile2: form.mobile2 ? form.mobile2.trim() : "",
           governorate: form.governorate.trim(),
           address: form.address.trim(),
           items: itemsSummary,
@@ -1366,31 +1678,24 @@ export default function App() {
         })
       }).catch(err => console.error("Sheets Error:", err));
 
-      // تخزين الطلب مباشر في Firestore
-      const dbItems = cart.map(item => ({
-        name: item.name,
-        size: item.sizeLabel,
-        qty: item.qty,
-        price: item.price
-      }));
-
+      // حفظ نسخة احتياطية في Firestore
       await addDoc(collection(db, "orders"), {
         orderNumber,
         customerName: form.name.trim(),
         mobile1: form.mobile1.trim(),
-        mobile2: form.mobile2.trim(),
+        mobile2: form.mobile2 ? form.mobile2.trim() : "",
         governorate: form.governorate.trim(),
         address: form.address.trim(),
-        items: dbItems,
-        subtotal: subtotal,
-        shippingFee: shippingFee,
-        totalPrice: totalPrice,
+        items: cart.map(item => ({ name: item.name, size: item.sizeLabel, qty: item.qty, price: item.price })),
+        subtotal,
+        shippingFee,
+        totalPrice,
         status: "pending",
         createdAt: new Date().toISOString()
       });
 
     } catch (error) {
-      console.error("Error saving order:", error);
+      console.error("Order processing error:", error);
     }
 
     setLastOrder(orderData);
@@ -1404,16 +1709,11 @@ export default function App() {
         <style>{FONT_IMPORT}</style>
         
         <Routes>
-          {/* 1. صفحة الأدمن المستقلة */}
           <Route path="/admin" element={<AdminProducts />} />
-
-          {/* 2. صفحة تفاصيل المنتج */}
           <Route 
             path="/product/:id" 
             element={<ProductDetails productsList={productsList} addToCart={addToCart} setPage={setPage} />} 
           />
-
-          {/* 3. المتجر الرئيسي بكافة صفحاته */}
           <Route
             path="/*"
             element={
